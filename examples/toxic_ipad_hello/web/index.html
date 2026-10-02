@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <!-- The SDK and its optional styles are served by the tablet resource. -->
+  <link rel="stylesheet" href="https://cfx-nui-toxic_ipad/ui/sdk/toxic-ipad-sdk.css">
+  <script src="https://cfx-nui-toxic_ipad/ui/sdk/toxic-ipad-sdk.js"></script>
+  <style>
+    .hero { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+    .hero img { width: 64px; height: 64px; border-radius: 15px; }
+    .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+    pre { font-size: 12px; color: var(--ipad-label-2); white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="ipad-page">
+    <div class="hero">
+      <img src="icon.svg" alt="">
+      <div>
+        <h1 class="ipad-title" style="margin:0" data-t="title"></h1>
+        <div style="color:var(--ipad-label-2)" data-t="subtitle"></div>
+      </div>
+    </div>
+
+    <div class="ipad-list">
+      <div class="ipad-row"><span data-t="taps"></span><span class="ipad-value" id="count">–</span></div>
+      <div class="ipad-row"><span data-t="permission"></span><span class="ipad-value" id="perm">–</span></div>
+      <div class="ipad-row"><span data-t="where"></span><span class="ipad-value" id="where">–</span></div>
+    </div>
+    <img id="picked" alt="" style="display:none;max-width:100%;max-height:220px;border-radius:12px;margin-top:12px">
+
+    <div class="buttons">
+      <button class="ipad-button" id="tap" data-t="tap"></button>
+      <button class="ipad-button secondary" id="locate" data-t="locate"></button>
+      <button class="ipad-button secondary" id="notify" data-t="notify"></button>
+      <button class="ipad-button secondary" id="toast" data-t="toast"></button>
+      <button class="ipad-button secondary" id="pick" data-t="pick"></button>
+      <button class="ipad-button destructive" id="reset" data-t="reset"></button>
+    </div>
+    <pre id="log"></pre>
+  </div>
+
+  <script>
+    // Texts of this app in the tablet's language (the OS tells us which).
+    const TEXT = {
+      en: {
+        title: 'Hello', subtitle: 'Toxic iPad App SDK example', taps: 'Taps saved on this tablet',
+        permission: 'Location permission', where: 'You are at', tap: 'Tap (+1)', locate: 'Where am I?',
+        notify: 'Send me a notification', toast: 'Show a toast', reset: 'Reset taps',
+        resetTitle: 'Reset the counter?', resetBody: 'The saved taps on this tablet go back to 0.',
+        denied: 'Location access is off', sent: 'Check your notifications', toastText: 'Hello from toxic_ipad_hello',
+        pick: 'Pick a photo', noPhotos: 'Photo access is off',
+      },
+      mn: {
+        title: 'Сайн уу', subtitle: 'Toxic iPad App SDK-ийн жишээ', taps: 'Энэ таблетад хадгалсан дарсан тоо',
+        permission: 'Байршлын зөвшөөрөл', where: 'Та энд байна', tap: 'Дарах (+1)', locate: 'Би хаана байна?',
+        notify: 'Надад мэдэгдэл илгээх', toast: 'Жижиг мэдэгдэл', reset: 'Тоолуурыг тэглэх',
+        resetTitle: 'Тоолуурыг тэглэх үү?', resetBody: 'Энэ таблетад хадгалсан тоо 0 болно.',
+        denied: 'Байршлын зөвшөөрөл унтраалттай', sent: 'Мэдэгдлээ шалгаарай', toastText: 'toxic_ipad_hello-оос мэндчилгээ',
+        pick: 'Зураг сонгох', noPhotos: 'Зургийн зөвшөөрөл унтраалттай',
+      },
+    };
+    const $ = (id) => document.getElementById(id);
+    const log = (line) => { $('log').textContent = line + '\n' + $('log').textContent; };
+    let tr = TEXT.en;
+    const applyText = (locale) => {
+      tr = TEXT[locale] || TEXT.en;
+      document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = tr[el.dataset.t]; });
+    };
+
+    // Our own resource's NUI callbacks (client.lua). The name is written out:
+    // inside the tablet this page is an iframe of toxic_ipad_hello.
+    const nui = (name, body = {}) =>
+      fetch(`https://toxic_ipad_hello/${name}`, { method: 'POST', body: JSON.stringify(body) }).then((r) => r.json());
+
+    ToxicIPad.connect().then(async (ipad) => {
+      applyText(ipad.context.locale);
+      ipad.on('context', (ctx) => applyText(ctx.locale));
+      ipad.on('lifecycle', (event) => log('lifecycle: ' + event));
+      ipad.on('route', (route) => log('route: ' + route));
+      if (ipad.context.route) log('opened at ' + ipad.context.route);
+
+      let count = (await ipad.storage.get('taps')) || 0;
+      $('count').textContent = count;
+      $('perm').textContent = await ipad.permission('location');
+
+      $('tap').onclick = async () => {
+        count += 1;
+        $('count').textContent = count;
+        await ipad.storage.set('taps', count);
+        ipad.setBadge(count % 10);
+        nui('tapped', { count }); // → UpdateWidget on the server
+      };
+      $('pick').onclick = async () => {
+        try {
+          const photo = await ipad.photos.pick(); // null = cancelled
+          if (!photo) return;
+          $('picked').src = photo.url;
+          $('picked').style.display = 'block';
+          log('picked photo #' + photo.id + (photo.location ? ' at ' + photo.location : ''));
+        } catch (err) {
+          ipad.toast({ text: tr.noPhotos, kind: 'error' });
+        }
+      };
+      $('locate').onclick = async () => {
+        const state = await ipad.requestPermission('location');
+        $('perm').textContent = state;
+        if (state !== 'granted') return ipad.toast({ text: tr.denied, kind: 'error' });
+        const result = await nui('whereAmI');
+        $('where').textContent = result.ok ? `${result.street}, ${result.zone}` : tr.denied;
+      };
+      $('notify').onclick = async () => {
+        await nui('notifyMe');
+        ipad.toast({ text: tr.sent, kind: 'success' });
+      };
+      $('toast').onclick = () => ipad.toast({ text: tr.toastText });
+      $('reset').onclick = async () => {
+        if (!(await ipad.confirm({ title: tr.resetTitle, message: tr.resetBody, destructive: true }))) return;
+        count = 0;
+        $('count').textContent = count;
+        await ipad.storage.remove('taps');
+        ipad.setBadge(0);
+      };
+      ipad.ready();
+    }).catch((err) => {
+      document.body.textContent = String(err.message || err);
+    });
+  </script>
+</body>
+</html>

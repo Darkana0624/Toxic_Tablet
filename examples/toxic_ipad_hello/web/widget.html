@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://cfx-nui-toxic_ipad/ui/sdk/toxic-ipad-sdk.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; }
+    body {
+      box-sizing: border-box; padding: 16px; cursor: pointer; user-select: none;
+      display: flex; flex-direction: column; justify-content: space-between;
+      background: linear-gradient(135deg, #ff9f0a, #ff375f); color: #fff;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    .big { font-size: 42px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div style="font-weight:600;opacity:.9">Hello</div>
+  <div class="big" id="n">–</div>
+  <div style="opacity:.85;font-size:13px" id="label">taps</div>
+  <script>
+    ToxicIPad.connect().then(async (ipad) => {
+      const label = { en: 'taps saved', mn: 'хадгалсан тоо' };
+      document.getElementById('label').textContent = label[ipad.context.locale] || label.en;
+      document.getElementById('n').textContent = (await ipad.storage.get('taps')) || 0;
+      // live value pushed by the server (exports.toxic_ipad:UpdateWidget)
+      const show = (data) => { if (data && typeof data.taps === 'number') document.getElementById('n').textContent = data.taps; };
+      show(ipad.data);
+      ipad.on('data', show);
+      document.body.onclick = () => ipad.openApp('hello_demo');
+      ipad.ready();
+    });
+  </script>
+</body>
+</html>
